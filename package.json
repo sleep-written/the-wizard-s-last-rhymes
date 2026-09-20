@@ -2,8 +2,15 @@
   "name": "the-wizard-s-last-rhymes",
   "type": "module",
   "scripts": {
+    "typeorm": "bleed start ./node_modules/typeorm/cli.js --",
     "start": "bleed start ./src/index.ts --",
-    "typeorm": "bleed start ./node_modules/typeorm/cli.js --"
+    "build:cls": "rm -rf ./dist",
+    "build:mts": "bleed build --config ./tsconfig.build.json",
+    "build:chm": "chmod +x ./dist/index.js",
+    "build": "node --run build:cls && node --run build:mts && node --run build:chm"
+  },
+  "bin": {
+    "rhymes": "./dist/index.js"
   },
   "exports": {
     ".": {
