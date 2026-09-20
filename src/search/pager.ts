@@ -28,6 +28,8 @@ export interface PagerList {
 
 export interface PagerOptions {
     title: string;
+    /** Aclaración junto al título: el filtro de categorías, si lo hay. */
+    note?: string;
     lists: PagerList[];
     /** Trae el detalle de las palabras visibles; solo se pide lo que se ve. */
     load(names: string[]): Promise<Map<string, WordDetail>>;
@@ -118,6 +120,7 @@ export function page(
 /** Navegador a pantalla completa para listas que no caben en la terminal. */
 export class Pager {
     readonly #title: string;
+    readonly #note: string | undefined;
     readonly #lists: PagerList[];
     readonly #load: PagerOptions['load'];
     readonly #input: NodeJS.ReadStream;
@@ -133,6 +136,7 @@ export class Pager {
 
     constructor(options: PagerOptions) {
         this.#title = options.title;
+        this.#note = options.note;
         this.#lists = options.lists;
         this.#load = options.load;
         this.#input = options.input ?? process.stdin;
@@ -279,7 +283,8 @@ export class Pager {
         const out = [
             `${styleText([ 'bold', 'underline' ], this.#title)}  ${styleText([ 'bold', 'magenta' ], list.label)}`
                 + `  ${styleText('yellow', list.value)}`
-                + `  ${styleText('dim', `${words.length.toLocaleString('es')} palabras`)}${measure}`,
+                + `  ${styleText('dim', `${words.length.toLocaleString('es')} palabras`)}${measure}`
+                + (this.#note ? `  ${styleText('dim', this.#note)}` : ''),
             '',
             ...body,
             ...Array(Math.max(0, visible - body.length)).fill(''),

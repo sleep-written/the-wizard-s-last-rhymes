@@ -1,11 +1,13 @@
 import { styleText } from 'node:util';
 import { Command, Commander } from '@bleed-believer/commander';
 import { searchCommand } from './search/command.js';
+import { typesCommand } from './word-types/command.js';
 import { helpCommand, printCommand, printOverview } from './help/command.js';
 import { matches, toHelp } from './help/docs.js';
 
 export const commander = new Commander([
     searchCommand,
+    typesCommand,
     helpCommand,
     
     // For not found command

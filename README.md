@@ -101,6 +101,22 @@ De los grupos se apartan los prefijos, sufijos e infijos, que comparten clave
 pero no son palabras, y las siglas, que en el volcado son las entradas escritas
 enteras en mayúscula.
 
+#### `--type <categoría>`, `-t`
+
+Deja en las rimas solo las categorías que se pidan. Vale el nombre en español
+o el código del volcado, con tildes o sin ellas, repitiendo el flag o separando
+con comas:
+
+```shell
+rhymes search cielo --type sustantivo
+rhymes search cielo -t noun,adj
+rhymes search cielo -t verbo -t adjetivo
+```
+
+El filtro manda sobre lo que `search` aparta por su cuenta: pidiendo `--type
+sufijo` salen los sufijos, que sin él nunca aparecen. Las categorías que hay las
+lista el comando [`types`](#types).
+
 Si la terminal es interactiva, al final se ofrece abrir el paginador:
 
 | Tecla | Qué hace |
@@ -112,6 +128,16 @@ Si la terminal es interactiva, al final se ofrece abrir el paginador:
 | `c` `a` | Saltar a las consonantes o a las asonantes |
 | `s` | En las asonantes, alternar entre todas y las de la misma medida |
 | `q` `esc` | Salir |
+
+### `types`
+
+Las categorías gramaticales que admite `--type`, con su nombre en español, el
+código con el que vienen en el volcado y cuántas palabras hay de cada una.
+También se puede escribir `categorias`.
+
+```shell
+rhymes types
+```
 
 ### `help [command...]`
 

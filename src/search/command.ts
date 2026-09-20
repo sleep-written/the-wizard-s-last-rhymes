@@ -9,44 +9,13 @@ import type { WordDetail } from './pager.js';
 
 import { Pager } from './pager.js';
 import { capitalize, plural } from './text.js';
+import { NOT_RHYMABLE, resolveTypes, typeList, typeName } from '../word-types/names.js';
 
 /** Cuántas palabras se muestran de cada grupo de rima. */
 const RHYME_SAMPLE = 30;
 
 /** Cuántas acepciones se listan por entrada. */
 const SENSE_LIMIT = 12;
-
-/** Categorías que no sirven para rimar: no son palabras que uno pueda usar. */
-const NOT_RHYMABLE = [ 'prefix', 'suffix', 'infix', 'interfix', 'character', 'punct', 'symbol' ];
-
-/** Nombres legibles para las categorías, que el volcado trae en inglés. */
-const TYPE_NAMES: Record<string, string> = {
-    adj: 'adjetivo',
-    adv: 'adverbio',
-    adv_phrase: 'locución adverbial',
-    article: 'artículo',
-    character: 'carácter',
-    conj: 'conjunción',
-    contraction: 'contracción',
-    det: 'determinante',
-    infix: 'infijo',
-    interfix: 'interfijo',
-    intj: 'interjección',
-    name: 'nombre propio',
-    noun: 'sustantivo',
-    num: 'numeral',
-    particle: 'partícula',
-    phrase: 'locución',
-    prefix: 'prefijo',
-    prep: 'preposición',
-    prep_phrase: 'locución preposicional',
-    pron: 'pronombre',
-    proverb: 'refrán',
-    punct: 'signo',
-    suffix: 'sufijo',
-    symbol: 'símbolo',
-    verb: 'verbo',
-};
 
 interface Entry {
     id: number;
@@ -90,14 +59,45 @@ function inColumns(words: string[], indent: string): string[] {
     return rows;
 }
 
+/** Lo que se pidió en `--type` no es ninguna categoría: se dice cuáles hay. */
+function printUnknownTypes(unknown: string[]): void {
+    const label = unknown.length === 1 ? 'No es una categoría:' : 'No son categorías:';
+    console.log(`\n  ${styleText('red', label)} ${styleText('bold', unknown.join(', '))}`);
+    console.log(`  ${styleText('dim', 'Las que hay:')}`);
+
+    for (const line of inColumns(typeList(), '    ')) console.log(line);
+    console.log(`  ${styleText('dim', 'También vale el código del volcado; «rhymes types» las lista con detalle.')}\n`);
+}
+
 export const searchCommand = new Command({
     description: 'Busca una palabra: su categoría, sus acepciones y sus rimas',
     positionals: 'search :word',
+    flags: {
+        type: {
+            type: 'string',
+            short: 't',
+            array: true,
+            description: 'Deja en las rimas solo esas categorías (alias -t, repetible o con comas)',
+        },
+    },
     callback: ctx => new class implements CommandTarget {
         #excluded: number[] = [];
 
+        /** Los identificadores de las categorías pedidas en `--type`. */
+        #types: number[] = [];
+
+        /** Esas mismas categorías en español, para los mensajes. */
+        #typeNames: string[] = [];
+
         async onInit(): Promise<void> {
             const word = ctx.positionals.word;
+
+            const wanted = resolveTypes(ctx.flags.type ?? []);
+            if (wanted.unknown.length) {
+                printUnknownTypes(wanted.unknown);
+                return;
+            }
+
             await dataSource.initialize();
 
             const entries: Entry[] = await dataSource.query(`
@@ -112,16 +112,15 @@ export const searchCommand = new Command({
                 return;
             }
 
-            const excluded = await dataSource.query(
-                `select id from "WordType" where name in (${NOT_RHYMABLE.map(() => '?').join(', ')})`,
-                NOT_RHYMABLE);
-            this.#excluded = excluded.map((row: { id: number }) => row.id);
+            if (!await this.#loadTypes(wanted.codes, wanted.names)) return;
 
             const [ { syllables } ] = await dataSource.query(
                 `select count(*) as syllables from "WordSyllable" where wordId = ?`, [ entries[0]!.id ]);
 
             console.log(`\n${styleText([ 'bold', 'underline' ], word)}`);
-            console.log(styleText('dim', `${plural(syllables, 'sílaba', 'sílabas')}\n`));
+            console.log(styleText('dim', plural(syllables, 'sílaba', 'sílabas')));
+            if (this.#typeNames.length) console.log(styleText('dim', `rimas: solo ${this.#typeNames.join(', ')}`));
+            console.log();
 
             for (const entry of entries) await this.#printSenses(entry);
 
@@ -138,6 +137,32 @@ export const searchCommand = new Command({
             await this.#browse(word, syllables, first!, consonant, asonant);
         }
 
+        /**
+         * Traduce a identificadores las categorías que hacen falta: las pedidas
+         * en `--type`, o las que se apartan siempre cuando no hay filtro.
+         * Devuelve `false` si lo pedido no existe en la base.
+         */
+        async #loadTypes(codes: string[], names: string[]): Promise<boolean> {
+            const asked = codes.length ? codes : NOT_RHYMABLE;
+            const rows: { id: number }[] = await dataSource.query(
+                `select id from "WordType" where name in (${asked.map(() => '?').join(', ')})`, asked);
+
+            if (!codes.length) {
+                this.#excluded = rows.map(row => row.id);
+                return true;
+            }
+
+            if (!rows.length) {
+                console.log(`\n  ${styleText('red', 'Ninguna palabra es de esa categoría:')}`
+                    + ` ${styleText('bold', names.join(', '))}\n`);
+                return false;
+            }
+
+            this.#types = rows.map(row => row.id);
+            this.#typeNames = names;
+            return true;
+        }
+
         async #printSenses(entry: Entry): Promise<void> {
             const senses: Sense[] = await dataSource.query(`
                 select s.description, group_concat(g.name, ', ') as tags
@@ -148,7 +173,7 @@ export const searchCommand = new Command({
                  group by s.id
                  order by s.id`, [ entry.id ]);
 
-            const type = capitalize(TYPE_NAMES[entry.type] ?? entry.type);
+            const type = capitalize(typeName(entry.type));
             console.log(`  ${styleText([ 'bold', 'cyan' ], type)} ${styleText('dim', `(${entry.type})`)}`);
 
             for (const sense of senses.slice(0, SENSE_LIMIT)) {
@@ -160,6 +185,40 @@ export const searchCommand = new Command({
             const hidden = senses.length - SENSE_LIMIT;
             if (hidden > 0) console.log(`    ${styleText('dim', `y ${hidden} acepciones más`)}`);
             console.log();
+        }
+
+        /**
+         * Qué palabras entran en un grupo de rima: las de la clave, menos la
+         * buscada, y solo las categorías que toquen.
+         */
+        #group(column: string, rhymeId: number, word: string, syllables: number | null): {
+            where: string;
+            params: unknown[];
+        } {
+            // fuera las siglas, que en el volcado son las entradas en mayúscula
+            const filters = [
+                `w."${column}" = ?`,
+                `w.name <> ?`,
+                `w.name <> upper(w.name)`,
+            ];
+            const params: unknown[] = [ rhymeId, word ];
+
+            // con `--type` manda lo pedido, aunque sea un afijo; sin él se
+            // apartan los que comparten clave pero no son palabras
+            if (this.#types.length) {
+                filters.push(`w.wordTypeId in (${this.#types.map(() => '?').join(', ')})`);
+                params.push(...this.#types);
+            } else {
+                filters.push(`w.wordTypeId not in (${this.#excluded.map(() => '?').join(', ')})`);
+                params.push(...this.#excluded);
+            }
+
+            if (syllables) {
+                filters.push(`(select count(*) from "WordSyllable" ws where ws.wordId = w.id) = ?`);
+                params.push(syllables);
+            }
+
+            return { where: filters.join(' and '), params };
         }
 
         async #printRhyme(
@@ -178,22 +237,7 @@ export const searchCommand = new Command({
             const [ { value } ] = await dataSource.query(
                 `select value from "Rhyme" where id = ?`, [ rhymeId ]);
 
-            // fuera los afijos, que comparten clave pero no son palabras, y las
-            // siglas, que en el volcado son las entradas en mayúscula
-            const filters = [
-                `w."${column}" = ?`,
-                `w.name <> ?`,
-                `w.name <> upper(w.name)`,
-                `w.wordTypeId not in (${this.#excluded.map(() => '?').join(', ')})`,
-            ];
-            const params: unknown[] = [ rhymeId, word, ...this.#excluded ];
-
-            if (syllables) {
-                filters.push(`(select count(*) from "WordSyllable" ws where ws.wordId = w.id) = ?`);
-                params.push(syllables);
-            }
-
-            const where = filters.join(' and ');
+            const { where, params } = this.#group(column, rhymeId, word, syllables);
             const [ { total } ] = await dataSource.query(
                 `select count(distinct w.name) as total from "Word" w where ${where}`, params);
 
@@ -204,7 +248,10 @@ export const searchCommand = new Command({
                 + `  ${styleText('dim', plural(total, 'palabra', 'palabras'))}${measure}`);
 
             if (!total) {
-                console.log(`    ${styleText('dim', 'ninguna otra palabra la comparte')}\n`);
+                const none = this.#typeNames.length
+                    ?   'ninguna palabra de esas categorías la comparte'
+                    :   'ninguna otra palabra la comparte';
+                console.log(`    ${styleText('dim', none)}\n`);
                 return null;
             }
 
@@ -225,21 +272,9 @@ export const searchCommand = new Command({
 
         /** Trae el grupo entero, ya ordenado en español. */
         async #allWords(column: string, rhymeId: number, word: string, syllables: number | null): Promise<string[]> {
-            const filters = [
-                `w."${column}" = ?`,
-                `w.name <> ?`,
-                `w.name <> upper(w.name)`,
-                `w.wordTypeId not in (${this.#excluded.map(() => '?').join(', ')})`,
-            ];
-            const params: unknown[] = [ rhymeId, word, ...this.#excluded ];
-
-            if (syllables) {
-                filters.push(`(select count(*) from "WordSyllable" ws where ws.wordId = w.id) = ?`);
-                params.push(syllables);
-            }
-
+            const { where, params } = this.#group(column, rhymeId, word, syllables);
             const rows: { name: string }[] = await dataSource.query(
-                `select distinct w.name from "Word" w where ${filters.join(' and ')}`, params);
+                `select distinct w.name from "Word" w where ${where}`, params);
 
             // ordenar aquí y no en SQL: SQLite compara byte a byte y dejaría
             // las mayúsculas y los acentos fuera de su sitio
@@ -268,7 +303,7 @@ export const searchCommand = new Command({
                     found.set(row.name, detail);
                 }
 
-                const type = TYPE_NAMES[row.type] ?? row.type;
+                const type = typeName(row.type);
                 if (!detail.types.includes(type)) detail.types.push(type);
                 if (row.description && !detail.definitions.includes(row.description)) {
                     detail.definitions.push(row.description);
@@ -336,6 +371,7 @@ export const searchCommand = new Command({
             const start = lists.findIndex(list => list.key === wanted);
             await new Pager({
                 title: word,
+                note: this.#typeNames.length ? `solo ${this.#typeNames.join(', ')}` : undefined,
                 lists,
                 load: this.#detailsOf.bind(this),
             }).run(Math.max(0, start));
