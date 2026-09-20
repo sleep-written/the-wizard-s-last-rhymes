@@ -15,7 +15,8 @@
 
         "types": [ "node" ],
         "paths": {
-            "@data-source": [ "./src/data-source.ts" ],
+            "@data-source.js": [ "./src/data-source.ts" ],
+            "@commander.js": [ "./src/commander.ts" ],
             "@entities/*": [ "./src/entities/*" ]
         }
     }
