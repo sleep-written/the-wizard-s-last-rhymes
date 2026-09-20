@@ -1,0 +1,27 @@
+{
+  "name": "the-wizard-s-last-rhymes",
+  "type": "module",
+  "scripts": {
+    "start": "bleed start ./src/index.ts --",
+    "typeorm": "bleed start ./node_modules/typeorm/cli.js --"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "devDependencies": {
+    "@bleed-believer/cli": "^1.1.0",
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@bleed-believer/commander": "^2.1.1",
+    "better-sqlite3": "^12.11.1",
+    "typeorm": "^1.1.1"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}

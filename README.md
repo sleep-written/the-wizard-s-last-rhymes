@@ -1,0 +1,1 @@
+The file [./rae.jsonl](./rae.jsonl) was extracted from [here](https://kaikki.org/dictionary/Spanish/words/index.html).
